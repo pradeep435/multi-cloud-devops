@@ -32,3 +32,4 @@ steps:
     run: terraform apply -auto-approve
     working-directory: terraform/azure
 ```
+
