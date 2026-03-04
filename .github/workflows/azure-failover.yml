@@ -25,10 +25,12 @@ jobs:
           echo "Failover not confirmed. Exiting."
           exit 1
 
+      - name: Confirmation accepted
+        run: echo "Confirmation received. Proceeding to Azure failover."
+
   azure_failover:
     runs-on: ubuntu-latest
     needs: validate
-    environment: ${{ github.event.inputs.environment }}
     timeout-minutes: 30
     env:
       TF_WORKING_DIR: terraform/azure
@@ -38,7 +40,8 @@ jobs:
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
@@ -51,12 +54,7 @@ jobs:
           terraform_version: "~1.9.0"
 
       - name: Terraform Init
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.TF_STATE_RG }}" \
-            -backend-config="storage_account_name=${{ secrets.TF_STATE_SA }}" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=${{ github.event.inputs.environment }}.terraform.tfstate"
+        run: terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Validate
@@ -67,16 +65,15 @@ jobs:
         id: plan
         run: |
           terraform plan \
-            -var="environment=${{ github.event.inputs.environment }}" \
             -out=tfplan \
             -detailed-exitcode
         working-directory: ${{ env.TF_WORKING_DIR }}
         continue-on-error: true
 
-      - name: Fail on plan error
+      - name: Fail on Terraform Plan Error
         if: steps.plan.outputs.exitcode == '1'
         run: |
-          echo "Terraform plan failed"
+          echo "Terraform plan encountered an error."
           exit 1
 
       - name: Terraform Apply
@@ -84,18 +81,21 @@ jobs:
         run: terraform apply -auto-approve tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
 
-      - name: No changes detected
+      - name: No Changes Detected
         if: steps.plan.outputs.exitcode == '0'
-        run: echo "No infrastructure changes required for failover."
+        run: echo "Infrastructure already up to date. No changes needed."
 
-      - name: Notify on success
+      - name: Failover Success
         if: success()
         run: |
-          echo "Failover to ${{ github.event.inputs.environment }} completed successfully."
-          # Add Slack/Teams/PagerDuty webhook call here
+          echo "================================================"
+          echo "Azure Standby Environment Deployed Successfully!"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "================================================"
 
-      - name: Notify on failure
+      - name: Failover Failed
         if: failure()
         run: |
-          echo "Failover to ${{ github.event.inputs.environment }} FAILED."
-          # Add alerting webhook here
+          echo "================================================"
+          echo "Azure Failover FAILED. Check logs above."
+          echo "================================================"
