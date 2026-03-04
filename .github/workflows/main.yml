@@ -4,11 +4,9 @@ on:
 workflow_dispatch:
 
 jobs:
-azure_failover:
-runs-on: ubuntu-latest
-
-```
-steps:
+  azure_failover:
+   runs-on: ubuntu-latest
+  steps:
   - uses: actions/checkout@v3
 
   - name: Azure Login
@@ -30,4 +28,5 @@ steps:
   - name: Terraform Apply
     run: terraform apply -auto-approve
     working-directory: terraform/azure
-```
+ 
+
