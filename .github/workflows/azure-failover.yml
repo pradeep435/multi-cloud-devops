@@ -1,15 +1,15 @@
 name: Azure Standby Failover
+
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-azure-failover:
+azure_failover:
 runs-on: ubuntu-latest
 steps:
-- name: Checkout Repository
-uses: actions/checkout@v3
+  - uses: actions/checkout@v3
 
-```
+
   - name: Azure Login
     uses: azure/login@v1
     with:
@@ -29,4 +29,4 @@ uses: actions/checkout@v3
   - name: Terraform Apply
     run: terraform apply -auto-approve
     working-directory: terraform/azure
-```
+
