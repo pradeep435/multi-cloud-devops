@@ -1,36 +1,41 @@
 name: Azure Standby Failover
 
 on:
-  workflow_dispatch:
+workflow_dispatch:
 
 jobs:
-  azure-failover:
-    runs-on: ubuntu-latest
+azure-failover:
+runs-on: ubuntu-latest
 
-    steps:
+```
+steps:
+  # Step 1 — Checkout repo
+  - name: Checkout Repository
+    uses: actions/checkout@v3
 
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+  # Step 2 — Login to Azure using Service Principal JSON
+  - name: Azure Login
+    uses: azure/login@v1
+    with:
+      creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          client-id: ${{ secrets.ARM_CLIENT_ID }}
-          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
-          tenant-id: ${{ secrets.ARM_TENANT_ID }}
-          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  # Step 3 — Install Terraform
+  - name: Setup Terraform
+    uses: hashicorp/setup-terraform@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+  # Step 4 — Terraform Init
+  - name: Terraform Init
+    run: terraform init
+    working-directory: terraform/azure
 
-      - name: Terraform Init
-        run: terraform init
-        working-directory: terraform/azure
+  # Step 5 — Terraform Plan
+  - name: Terraform Plan
+    run: terraform plan
+    working-directory: terraform/azure
 
-      - name: Terraform Plan
-        run: terraform plan
-        working-directory: terraform/azure
+  # Step 6 — Terraform Apply (Create Azure Infrastructure)
+  - name: Terraform Apply
+    run: terraform apply -auto-approve
+    working-directory: terraform/azure
+```
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
-        working-directory: terraform/azure
