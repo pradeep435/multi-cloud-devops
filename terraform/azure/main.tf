@@ -100,7 +100,7 @@ resource "azurerm_network_security_rule" "grafana_port" {
 }
 
 # -----------------------------
-# Public IP
+# Public IP — Static
 # -----------------------------
 resource "azurerm_public_ip" "public_ip" {
   name                = "multi-cloud-public-ip"
