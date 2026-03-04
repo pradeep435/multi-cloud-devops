@@ -1,0 +1,101 @@
+name: Azure Standby Failover
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment for failover'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      confirm_failover:
+        description: 'Type CONFIRM to proceed with failover'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation input
+        if: ${{ github.event.inputs.confirm_failover != 'CONFIRM' }}
+        run: |
+          echo "Failover not confirmed. Exiting."
+          exit 1
+
+  azure_failover:
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: ${{ github.event.inputs.environment }}
+    timeout-minutes: 30
+    env:
+      TF_WORKING_DIR: terraform/azure
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9.0"
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RG }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ github.event.inputs.environment }}.terraform.tfstate"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -var="environment=${{ github.event.inputs.environment }}" \
+            -out=tfplan \
+            -detailed-exitcode
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        continue-on-error: true
+
+      - name: Fail on plan error
+        if: steps.plan.outputs.exitcode == '1'
+        run: |
+          echo "Terraform plan failed"
+          exit 1
+
+      - name: Terraform Apply
+        if: steps.plan.outputs.exitcode == '2'
+        run: terraform apply -auto-approve tfplan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: No changes detected
+        if: steps.plan.outputs.exitcode == '0'
+        run: echo "No infrastructure changes required for failover."
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "Failover to ${{ github.event.inputs.environment }} completed successfully."
+          # Add Slack/Teams/PagerDuty webhook call here
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Failover to ${{ github.event.inputs.environment }} FAILED."
+          # Add alerting webhook here
