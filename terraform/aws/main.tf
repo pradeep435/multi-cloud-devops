@@ -2,7 +2,6 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-# Get latest Amazon Linux 2 AMI automatically
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -47,7 +46,6 @@ resource "aws_instance" "app_server" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
 
-  # 🔐 Attach key pair
   key_name = "multicloud-key"
 
   vpc_security_group_ids = [aws_security_group.app_sg.id]
@@ -60,7 +58,6 @@ resource "aws_instance" "app_server" {
               systemctl enable docker
               systemctl start docker
 
-              # wait for docker to fully initialize
               sleep 30
 
               cd /home/ec2-user
@@ -68,11 +65,14 @@ resource "aws_instance" "app_server" {
               cd multi-cloud-devops
 
               docker build -t multi-cloud-app .
-              docker run -d -p 5000:5000 multi-cloud-app
+
+              docker run -d --restart=always -p 5000:5000 multi-cloud-app
               EOF
 
   tags = {
-    Name = "MultiCloudPrimary"
+    Name        = "MultiCloudPrimary"
+    Environment = "AWS-Primary"
+    Project     = "MultiCloudDevOps"
   }
 }
 
