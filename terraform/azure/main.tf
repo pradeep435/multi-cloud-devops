@@ -11,17 +11,11 @@ provider "azurerm" {
   features {}
 }
 
-# -----------------------------
-# Resource Group
-# -----------------------------
 resource "azurerm_resource_group" "rg" {
   name     = "multi-cloud-rg"
   location = "East US"
 }
 
-# -----------------------------
-# Virtual Network
-# -----------------------------
 resource "azurerm_virtual_network" "vnet" {
   name                = "multi-cloud-vnet"
   address_space       = ["10.0.0.0/16"]
@@ -29,9 +23,6 @@ resource "azurerm_virtual_network" "vnet" {
   resource_group_name = azurerm_resource_group.rg.name
 }
 
-# -----------------------------
-# Subnet
-# -----------------------------
 resource "azurerm_subnet" "subnet" {
   name                 = "multi-cloud-subnet"
   resource_group_name  = azurerm_resource_group.rg.name
@@ -39,18 +30,12 @@ resource "azurerm_subnet" "subnet" {
   address_prefixes     = ["10.0.1.0/24"]
 }
 
-# -----------------------------
-# Network Security Group
-# -----------------------------
 resource "azurerm_network_security_group" "nsg" {
   name                = "multi-cloud-nsg"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 }
 
-# -----------------------------
-# Allow Flask Port 5000
-# -----------------------------
 resource "azurerm_network_security_rule" "flask_port" {
   name                        = "allow-flask"
   priority                    = 100
@@ -65,9 +50,6 @@ resource "azurerm_network_security_rule" "flask_port" {
   network_security_group_name = azurerm_network_security_group.nsg.name
 }
 
-# -----------------------------
-# Allow Prometheus Port 9090
-# -----------------------------
 resource "azurerm_network_security_rule" "prometheus_port" {
   name                        = "allow-prometheus"
   priority                    = 110
@@ -82,9 +64,6 @@ resource "azurerm_network_security_rule" "prometheus_port" {
   network_security_group_name = azurerm_network_security_group.nsg.name
 }
 
-# -----------------------------
-# Allow Grafana Port 3000
-# -----------------------------
 resource "azurerm_network_security_rule" "grafana_port" {
   name                        = "allow-grafana"
   priority                    = 120
@@ -99,19 +78,14 @@ resource "azurerm_network_security_rule" "grafana_port" {
   network_security_group_name = azurerm_network_security_group.nsg.name
 }
 
-# -----------------------------
-# Public IP — Static
-# -----------------------------
 resource "azurerm_public_ip" "public_ip" {
   name                = "multi-cloud-public-ip"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
-# -----------------------------
-# Network Interface
-# -----------------------------
 resource "azurerm_network_interface" "nic" {
   name                = "multi-cloud-nic"
   location            = azurerm_resource_group.rg.location
@@ -125,17 +99,11 @@ resource "azurerm_network_interface" "nic" {
   }
 }
 
-# -----------------------------
-# Attach NSG to NIC
-# -----------------------------
 resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
   network_interface_id      = azurerm_network_interface.nic.id
   network_security_group_id = azurerm_network_security_group.nsg.id
 }
 
-# -----------------------------
-# Azure Virtual Machine
-# -----------------------------
 resource "azurerm_linux_virtual_machine" "vm" {
   name                            = "multi-cloud-azure-vm"
   resource_group_name             = azurerm_resource_group.rg.name
@@ -176,3 +144,12 @@ docker run -d -p 3000:3000 --restart=always grafana/grafana
 EOF
   )
 }
+
+output "azure_vm_public_ip" {
+  value = azurerm_public_ip.public_ip.ip_address
+}
+
+output "app_url" {
+  value = "http://${azurerm_public_ip.public_ip.ip_address}:5000"
+}
+```
