@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+  }
+}
+
 provider "azurerm" {
   features {}
 }
@@ -40,7 +49,7 @@ resource "azurerm_network_security_group" "nsg" {
 }
 
 # -----------------------------
-# Allow Flask Port
+# Allow Flask Port 5000
 # -----------------------------
 resource "azurerm_network_security_rule" "flask_port" {
   name                        = "allow-flask"
@@ -57,13 +66,47 @@ resource "azurerm_network_security_rule" "flask_port" {
 }
 
 # -----------------------------
+# Allow Prometheus Port 9090
+# -----------------------------
+resource "azurerm_network_security_rule" "prometheus_port" {
+  name                        = "allow-prometheus"
+  priority                    = 110
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "9090"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.rg.name
+  network_security_group_name = azurerm_network_security_group.nsg.name
+}
+
+# -----------------------------
+# Allow Grafana Port 3000
+# -----------------------------
+resource "azurerm_network_security_rule" "grafana_port" {
+  name                        = "allow-grafana"
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "3000"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.rg.name
+  network_security_group_name = azurerm_network_security_group.nsg.name
+}
+
+# -----------------------------
 # Public IP
 # -----------------------------
 resource "azurerm_public_ip" "public_ip" {
   name                = "multi-cloud-public-ip"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static"
 }
 
 # -----------------------------
@@ -94,18 +137,17 @@ resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
 # Azure Virtual Machine
 # -----------------------------
 resource "azurerm_linux_virtual_machine" "vm" {
-  name                = "multi-cloud-azure-vm"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  size                = "Standard_B1s"
-  admin_username      = "azureuser"
+  name                            = "multi-cloud-azure-vm"
+  resource_group_name             = azurerm_resource_group.rg.name
+  location                        = azurerm_resource_group.rg.location
+  size                            = "Standard_B1s"
+  admin_username                  = "azureuser"
+  admin_password                  = "Password1234!"
+  disable_password_authentication = false
 
   network_interface_ids = [
     azurerm_network_interface.nic.id
   ]
-
-  admin_password = "Password1234!"
-  disable_password_authentication = false
 
   os_disk {
     caching              = "ReadWrite"
@@ -119,29 +161,18 @@ resource "azurerm_linux_virtual_machine" "vm" {
     version   = "latest"
   }
 
-  # -----------------------------
-  # Docker + App Setup
-  # -----------------------------
   custom_data = base64encode(<<EOF
 #!/bin/bash
-
 apt update -y
 apt install docker.io git -y
 systemctl start docker
 systemctl enable docker
-
 git clone https://github.com/pradeep435/multi-cloud-devops.git
-
 cd multi-cloud-devops
-
 docker build -t multi-cloud-app .
-
 docker run -d -p 5000:5000 --restart=always multi-cloud-app
-
-docker run -d -p 9090:9090 prom/prometheus
-
-docker run -d -p 3000:3000 grafana/grafana
-
+docker run -d -p 9090:9090 --restart=always prom/prometheus
+docker run -d -p 3000:3000 --restart=always grafana/grafana
 EOF
   )
 }
