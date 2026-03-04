@@ -1,7 +1,7 @@
 name: Azure Standby Failover
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
   azure_failover:
