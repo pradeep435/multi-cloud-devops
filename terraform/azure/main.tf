@@ -97,11 +97,21 @@ resource "azurerm_network_interface" "nic" {
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.public_ip.id
   }
+
+  depends_on = [
+    azurerm_subnet.subnet,
+    azurerm_public_ip.public_ip
+  ]
 }
 
 resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
   network_interface_id      = azurerm_network_interface.nic.id
   network_security_group_id = azurerm_network_security_group.nsg.id
+
+  depends_on = [
+    azurerm_network_interface.nic,
+    azurerm_network_security_group.nsg
+  ]
 }
 
 resource "azurerm_linux_virtual_machine" "vm" {
@@ -143,6 +153,10 @@ docker run -d -p 9090:9090 --restart=always prom/prometheus
 docker run -d -p 3000:3000 --restart=always grafana/grafana
 EOF
   )
+
+  depends_on = [
+    azurerm_network_interface_security_group_association.nsg_assoc
+  ]
 }
 
 output "azure_vm_public_ip" {
