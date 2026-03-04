@@ -13,7 +13,7 @@ provider "azurerm" {
 
 resource "azurerm_resource_group" "rg" {
   name     = "multi-cloud-rg"
-  location = "East US"
+  location = "East US 2"
 }
 
 resource "azurerm_virtual_network" "vnet" {
@@ -108,7 +108,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
   name                            = "multi-cloud-azure-vm"
   resource_group_name             = azurerm_resource_group.rg.name
   location                        = azurerm_resource_group.rg.location
-  size                            = "Standard_B2ms"
+  size                            = "Standard_D2s_v3"
   admin_username                  = "azureuser"
   admin_password                  = "Password1234!"
   disable_password_authentication = false
