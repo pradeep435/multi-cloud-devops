@@ -129,7 +129,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
     version   = "latest"
   }
 
-  custom_data = base64encode(<<EOF
+  custom_data = base64encode(<<-EOF
 #!/bin/bash
 apt update -y
 apt install docker.io git -y
@@ -152,4 +152,3 @@ output "azure_vm_public_ip" {
 output "app_url" {
   value = "http://${azurerm_public_ip.public_ip.ip_address}:5000"
 }
-```
