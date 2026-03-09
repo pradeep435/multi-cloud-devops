@@ -51,78 +51,56 @@ jobs:
       - name: Check If Azure VM Exists
         id: check_vm
         run: |
-          VM_STATE=$(az vm show \
-            --resource-group multi-cloud-rg \
-            --name multi-cloud-azure-vm \
-            --query "powerState" \
-            -d \
-            --output tsv 2>/dev/null || echo "NOT_FOUND")
-
+          VM_STATE=$(az vm show --resource-group multi-cloud-rg --name multi-cloud-azure-vm --query "powerState" -d --output tsv 2>/dev/null || echo "NOT_FOUND")
           echo "VM State: $VM_STATE"
           echo "vm_state=$VM_STATE" >> $GITHUB_OUTPUT
 
       - name: Start VM if Stopped
-        if: |
-          steps.check_vm.outputs.vm_state == 'VM stopped' ||
-          steps.check_vm.outputs.vm_state == 'VM deallocated'
+        if: ${{ steps.check_vm.outputs.vm_state == 'VM stopped' || steps.check_vm.outputs.vm_state == 'VM deallocated' }}
         run: |
           echo "VM exists but is stopped. Starting VM..."
-          az vm start \
-            --resource-group multi-cloud-rg \
-            --name multi-cloud-azure-vm
+          az vm start --resource-group multi-cloud-rg --name multi-cloud-azure-vm
           echo "VM started successfully!"
 
       - name: Wait for VM to be Ready
-        if: |
-          steps.check_vm.outputs.vm_state == 'VM stopped' ||
-          steps.check_vm.outputs.vm_state == 'VM deallocated'
+        if: ${{ steps.check_vm.outputs.vm_state == 'VM stopped' || steps.check_vm.outputs.vm_state == 'VM deallocated' }}
         run: |
           echo "Waiting 60 seconds for VM to fully start..."
           sleep 60
           echo "VM should be ready now."
 
       - name: Setup Terraform
-        if: steps.check_vm.outputs.vm_state == 'NOT_FOUND'
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.9.0"
 
       - name: Terraform Init
-        if: steps.check_vm.outputs.vm_state == 'NOT_FOUND'
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
         run: terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Validate
-        if: steps.check_vm.outputs.vm_state == 'NOT_FOUND'
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
         run: terraform validate
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Plan
-        if: steps.check_vm.outputs.vm_state == 'NOT_FOUND'
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
         id: plan
-        run: |
-          terraform plan \
-            -out=tfplan \
-            -detailed-exitcode
+        run: terraform plan -out=tfplan -detailed-exitcode
         working-directory: ${{ env.TF_WORKING_DIR }}
         continue-on-error: true
 
       - name: Terraform Apply
-        if: |
-          steps.check_vm.outputs.vm_state == 'NOT_FOUND' &&
-          steps.plan.outputs.exitcode == '2'
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' && steps.plan.outputs.exitcode == '2' }}
         run: terraform apply -auto-approve tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Get Azure VM Public IP
         id: get_ip
         run: |
-          IP=$(az vm show \
-            --resource-group multi-cloud-rg \
-            --name multi-cloud-azure-vm \
-            --query "publicIps" \
-            -d \
-            --output tsv 2>/dev/null || echo "unknown")
+          IP=$(az vm show --resource-group multi-cloud-rg --name multi-cloud-azure-vm --query "publicIps" -d --output tsv 2>/dev/null || echo "unknown")
           echo "public_ip=$IP" >> $GITHUB_OUTPUT
           echo "Azure VM Public IP: $IP"
 
@@ -146,17 +124,3 @@ jobs:
           echo "================================================"
           echo "  Azure Failover FAILED. Check logs above."
           echo "================================================"
-```
-
----
-
-## What This Does
-```
-Workflow triggered
-      ↓
-Check VM state
-      ↓
-VM running     → Skip everything, show success + IP
-VM stopped     → az vm start → wait 60s → show success + IP
-VM deallocated → az vm start → wait 60s → show success + IP
-VM not found   → Terraform creates everything from scratch
