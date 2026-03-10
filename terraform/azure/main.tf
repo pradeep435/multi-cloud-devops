@@ -68,7 +68,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
   name                            = "multi-cloud-azure-vm"
   resource_group_name             = azurerm_resource_group.rg.name
   location                        = azurerm_resource_group.rg.location
-  size                            = "Standard_B1s"
+  size                            = "Standard_B2s"
   admin_username                  = "azureuser"
   admin_password                  = "Password1234!"
   disable_password_authentication = false
@@ -88,14 +88,27 @@ resource "azurerm_linux_virtual_machine" "vm" {
 
   custom_data = base64encode(<<EOF
 #!/bin/bash
+set -e
+exec > /var/log/startup.log 2>&1
+
+echo "=== Starting StreamCloud Setup ==="
+
+# Update and install Docker and Git
 apt-get update -y
-apt-get install -y docker.io git
+apt-get install -y docker.io git curl
 systemctl start docker
 systemctl enable docker
-sleep 15
+
+# Wait for Docker to be ready
+sleep 20
+echo "=== Docker is ready ==="
+
+# Clone the repo
 cd /home/azureuser
 git clone https://github.com/pradeep435/multi-cloud-devops.git
 cd multi-cloud-devops
+
+# Create Prometheus config
 cat > /home/azureuser/prometheus.yml <<PROM
 global:
   scrape_interval: 15s
@@ -108,14 +121,50 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 PROM
+
+echo "=== Building StreamCloud Docker image ==="
 docker build -t streamcloud-app .
-docker run -d --name flask-app --restart=always -p 5000:5000 -e CLOUD_PROVIDER=AZURE streamcloud-app
-docker run -d --name prometheus --restart=always -p 9090:9090 -v /home/azureuser/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
-docker run -d --name grafana --restart=always -p 3000:3000 -e GF_SECURITY_ADMIN_PASSWORD=admin grafana/grafana
+
+echo "=== Starting StreamCloud container ==="
+docker run -d \
+  --name streamcloud \
+  --restart=always \
+  -p 5000:5000 \
+  -e CLOUD_PROVIDER=AZURE \
+  streamcloud-app
+
+echo "=== Starting Prometheus container ==="
+docker run -d \
+  --name prometheus \
+  --restart=always \
+  -p 9090:9090 \
+  -v /home/azureuser/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
+
+echo "=== Starting Grafana container ==="
+docker run -d \
+  --name grafana \
+  --restart=always \
+  -p 3000:3000 \
+  -e GF_SECURITY_ADMIN_PASSWORD=admin \
+  grafana/grafana
+
+echo "=== Waiting for containers to be healthy ==="
+sleep 30
+
+echo "=== All containers started ==="
+docker ps
+
+echo "=== StreamCloud Setup Complete! ==="
 EOF
   )
 
-  tags = { Name = "StreamCloud-Standby", Project = "MultiCloudDevOps" }
+  tags = {
+    Name        = "StreamCloud-Standby"
+    Project     = "MultiCloudDevOps"
+    Environment = "Standby"
+    Cloud       = "Azure"
+  }
 }
 
 output "azure_vm_public_ip" { value = azurerm_public_ip.pip.ip_address }
