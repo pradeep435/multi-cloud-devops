@@ -240,17 +240,3 @@ def metrics():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
-```
-
-Click **"Commit changes"** → click green **"Commit changes"** button. ✅
-
----
-
-# FILE 2 — `requirements.txt`
-
-Go to `https://github.com/pradeep435/multi-cloud-devops/edit/main/requirements.txt`
-
-Delete everything, paste this:
-```
-flask==3.0.3
-prometheus_client==0.20.0
