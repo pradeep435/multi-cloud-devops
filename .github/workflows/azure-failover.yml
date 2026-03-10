@@ -51,10 +51,15 @@ jobs:
       - name: Check If Azure VM Exists
         id: check_vm
         run: |
-          VM_STATE=$(az vm show --resource-group multi-cloud-rg --name multi-cloud-azure-vm --query "powerState" -d --output tsv 2>/dev/null || echo "NOT_FOUND")
+          VM_STATE=$(az vm show \
+            --resource-group multi-cloud-rg \
+            --name multi-cloud-azure-vm \
+            --query "powerState" -d \
+            --output tsv 2>/dev/null || echo "NOT_FOUND")
           echo "VM State: $VM_STATE"
           echo "vm_state=$VM_STATE" >> $GITHUB_OUTPUT
 
+      # ─── SCENARIO B: VM exists but stopped ───────────────────────────
       - name: Start VM if Stopped
         if: ${{ steps.check_vm.outputs.vm_state == 'VM stopped' || steps.check_vm.outputs.vm_state == 'VM deallocated' }}
         run: |
@@ -65,10 +70,26 @@ jobs:
       - name: Wait for VM to be Ready
         if: ${{ steps.check_vm.outputs.vm_state == 'VM stopped' || steps.check_vm.outputs.vm_state == 'VM deallocated' }}
         run: |
-          echo "Waiting 60 seconds for VM to fully start..."
-          sleep 60
+          echo "Waiting 90 seconds for VM and Docker containers to start..."
+          sleep 90
           echo "VM should be ready now."
 
+      - name: Verify App Running After Start
+        if: ${{ steps.check_vm.outputs.vm_state == 'VM stopped' || steps.check_vm.outputs.vm_state == 'VM deallocated' }}
+        run: |
+          IP=$(az vm show --resource-group multi-cloud-rg --name multi-cloud-azure-vm --query "publicIps" -d --output tsv)
+          echo "Checking StreamCloud at http://$IP:5000/health ..."
+          for i in {1..10}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$IP:5000/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "StreamCloud is UP! Status: $STATUS"
+              break
+            fi
+            echo "Attempt $i: Status $STATUS — retrying in 15s..."
+            sleep 15
+          done
+
+      # ─── SCENARIO C: VM NOT FOUND — Create from scratch ─────────────
       - name: Setup Terraform
         if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
         uses: hashicorp/setup-terraform@v3
@@ -97,10 +118,37 @@ jobs:
         run: terraform apply -auto-approve tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
 
+      - name: Wait for VM Setup to Complete
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
+        run: |
+          echo "Waiting 3 minutes for VM to boot and Docker setup to complete..."
+          sleep 180
+          echo "Setup should be complete now."
+
+      - name: Verify App Running After Terraform
+        if: ${{ steps.check_vm.outputs.vm_state == 'NOT_FOUND' }}
+        run: |
+          IP=$(az vm show --resource-group multi-cloud-rg --name multi-cloud-azure-vm --query "publicIps" -d --output tsv)
+          echo "Checking StreamCloud at http://$IP:5000/health ..."
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$IP:5000/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "StreamCloud is UP! Status: $STATUS"
+              break
+            fi
+            echo "Attempt $i: Status $STATUS — retrying in 15s..."
+            sleep 15
+          done
+
+      # ─── GET IP AND PRINT SUMMARY ────────────────────────────────────
       - name: Get Azure VM Public IP
         id: get_ip
         run: |
-          IP=$(az vm show --resource-group multi-cloud-rg --name multi-cloud-azure-vm --query "publicIps" -d --output tsv 2>/dev/null || echo "unknown")
+          IP=$(az vm show \
+            --resource-group multi-cloud-rg \
+            --name multi-cloud-azure-vm \
+            --query "publicIps" -d \
+            --output tsv 2>/dev/null || echo "unknown")
           echo "public_ip=$IP" >> $GITHUB_OUTPUT
           echo "Azure VM Public IP: $IP"
 
