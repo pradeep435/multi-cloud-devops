@@ -114,7 +114,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
   name                            = "multi-cloud-azure-vm"
   resource_group_name             = azurerm_resource_group.rg.name
   location                        = azurerm_resource_group.rg.location
-  size                            = "Standard_B2s"
+  size                            = "Standard_D2s_v3"
   admin_username                  = "azureuser"
   admin_password                  = "Password1234!"
   disable_password_authentication = false
@@ -133,83 +133,84 @@ resource "azurerm_linux_virtual_machine" "vm" {
   }
 
   custom_data = base64encode(<<-EOF
-    #!/bin/bash
-    set -e
-    exec > /var/log/startup.log 2>&1
+#!/bin/bash
+set -e
+exec > /var/log/startup.log 2>&1
 
-    echo "=== Starting StreamCloud Setup ==="
+echo "=== Starting StreamCloud Setup ==="
 
-    apt-get update -y
-    apt-get install -y docker.io git curl
-    systemctl start docker
-    systemctl enable docker
+apt-get update -y
+apt-get install -y docker.io git curl
+systemctl start docker
+systemctl enable docker
 
-    sleep 20
-    echo "=== Docker is ready ==="
+sleep 20
+echo "=== Docker is ready ==="
 
-    cd /home/azureuser
-    git clone https://github.com/pradeep435/multi-cloud-devops.git
-    cd multi-cloud-devops
+cd /home/azureuser
+git clone https://github.com/pradeep435/multi-cloud-devops.git
+cd multi-cloud-devops
 
-    cat > /home/azureuser/prometheus.yml <<PROM
-    global:
-      scrape_interval: 15s
-    scrape_configs:
-      - job_name: 'streamcloud'
-        static_configs:
-          - targets: ['172.17.0.1:5000']
-        metrics_path: '/metrics'
-      - job_name: 'prometheus'
-        static_configs:
-          - targets: ['localhost:9090']
-    PROM
+echo "=== Creating Prometheus config ==="
+cat > /home/azureuser/prometheus.yml << 'PROM'
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: 'streamcloud'
+    static_configs:
+      - targets: ['172.17.0.1:5000']
+    metrics_path: '/metrics'
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+PROM
 
-    echo "=== Building StreamCloud Docker image ==="
-    docker build -t streamcloud-app .
+echo "=== Creating Grafana provisioning config ==="
+mkdir -p /home/azureuser/grafana-provisioning/datasources
+cat > /home/azureuser/grafana-provisioning/datasources/prometheus.yml << 'GRAFANA'
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://172.17.0.1:9090
+    isDefault: true
+    editable: true
+GRAFANA
 
-    echo "=== Starting StreamCloud ==="
-    docker run -d \
-      --name streamcloud \
-      --restart=always \
-      -p 5000:5000 \
-      -e CLOUD_PROVIDER=AZURE \
-      streamcloud-app
+echo "=== Building StreamCloud Docker image ==="
+docker build -t streamcloud-app .
 
-    echo "=== Starting Prometheus ==="
-    docker run -d \
-      --name prometheus \
-      --restart=always \
-      -p 9090:9090 \
-      -v /home/azureuser/prometheus.yml:/etc/prometheus/prometheus.yml \
-      prom/prometheus
+echo "=== Starting StreamCloud container ==="
+docker run -d \
+  --name streamcloud \
+  --restart=always \
+  -p 5000:5000 \
+  -e CLOUD_PROVIDER=AZURE \
+  streamcloud-app
 
-    echo "=== Starting Grafana with Prometheus auto-provisioned ==="
-    mkdir -p /home/azureuser/grafana-provisioning/datasources
+echo "=== Starting Prometheus container ==="
+docker run -d \
+  --name prometheus \
+  --restart=always \
+  -p 9090:9090 \
+  -v /home/azureuser/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
 
-    cat > /home/azureuser/grafana-provisioning/datasources/prometheus.yml <<GRAFANA
-    apiVersion: 1
-    datasources:
-      - name: Prometheus
-        type: prometheus
-        access: proxy
-        url: http://172.17.0.1:9090
-        isDefault: true
-        editable: true
-    GRAFANA
+echo "=== Starting Grafana container ==="
+docker run -d \
+  --name grafana \
+  --restart=always \
+  -p 3000:3000 \
+  -e GF_SECURITY_ADMIN_PASSWORD=admin \
+  -v /home/azureuser/grafana-provisioning:/etc/grafana/provisioning \
+  grafana/grafana
 
-    docker run -d \
-      --name grafana \
-      --restart=always \
-      -p 3000:3000 \
-      -e GF_SECURITY_ADMIN_PASSWORD=admin \
-      -v /home/azureuser/grafana-provisioning:/etc/grafana/provisioning \
-      grafana/grafana
-
-    sleep 30
-    echo "=== All containers started ==="
-    docker ps
-    echo "=== StreamCloud Setup Complete! ==="
-  EOF
+sleep 30
+echo "=== All containers started ==="
+docker ps
+echo "=== StreamCloud Azure Setup Complete! ==="
+EOF
   )
 
   tags = {
